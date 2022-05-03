@@ -12,7 +12,10 @@ class quad_rotor:
                                         [0, 0, 2.89e-5]])
         self.state = np.zeros((12, 1))
         self.Rbw = None
-        # self.Rbw #rotation matrix in the inertial frame
+        self.kp = np.identity(3)
+        self.kd = np.identity(3)
+        self.kr = np.identity(3)
+        self.k_omega = np.identity(3)
 
     def visualization(self, pos):
         #the inputs to the function is the length of the arm of the quad_rotor and the rotation matrix, and the position in the world frame
@@ -97,8 +100,34 @@ class quad_rotor:
         state_dot = np.concatenate((vel, accel.reshape(1,3), ang_vel.reshape(1,3), ang_accel.reshape(1,3)), axis=None)
         return state_dot
 
-# def controller(des_pos, des_vel, des_accel, des_yaw, des_yaw_rate):
+    def controller(self, des_pos, des_vel, des_accel, des_yaw, des_yaw_rate):
+        pos = np.array([self.state[0], self.state[1], self.state[2]]).reshape(3,1)
+        vel = np.array([self.state[3], self.state[4], self.state[5]]).reshape(3,1)
 
+        error_pos = pos - des_pos.reshape(3,1)
+        error_vel = vel - des_vel.reshape(3,1)
+
+        a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
+        print(a_cmd)
+
+        u1 = self.m*(a_cmd[2] * 9.8)
+
+        eta = np.array([self.state[6], self.state[7], self.state[8]]).reshape(3,1)
+
+        phi_des = -((a_cmd[1]*np.cos(des_yaw)) - (a_cmd[0]*np.sin(des_yaw)))/(9.8*(np.cos(des_yaw)**2 + np.sin(des_yaw)**2))
+        print(phi_des)
+        theta_des = a_cmd[0] - (((a_cmd[1]*np.cos(des_yaw)) + (a_cmd[0]*np.sin(des_yaw)))/(9.8*np.cos(des_yaw)))
+        print(theta_des)
+        eta_des = np.array([phi_des, theta_des, des_yaw]).reshape(3,1)
+
+        error_R = eta - eta_des
+
+        omega = np.array([self.state[9], self.state[10], self.state[11]]).reshape(3,1)
+        omega_des = np.array([0, 0, des_yaw_rate]).reshape(3,1)
+
+        error_omega = omega - omega_des
+
+        u2 = np.dot(np.identity(3), (-np.dot(self.kr, error_R)-np.dot(self.k_omega, error_omega)))
 
 
 def main():
@@ -108,6 +137,12 @@ def main():
     qd = quad_rotor()
     qd.dynamics(1, 1 , moment)
     pos = np.array([qd.state[0], qd.state[1], qd.state[1]])
+    des_pos = np.array([2, 2, 2])
+    des_vel = np.array([1, 1, 1])
+    des_accel = np.array([0.5, 0.5, 0.5])
+    des_yaw = 0
+    des_yaw_rate = 0
+    qd.controller(des_pos, des_vel, des_accel, des_yaw, des_yaw_rate)
     qd.visualization(pos.reshape(1,3))
 
 if __name__== "__main__":
