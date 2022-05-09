@@ -14,12 +14,15 @@ class quad_rotor:
                                         [0, 0, 2.89e-5]])
         self.state = np.zeros((12, 1))
         self.Rbw = np.identity(3)
-        self.kp = np.array([[5, 0, 0],
-                            [0, 5, 0],
-                            [0, 0, 4.5]]) #5 5 4.5
-        self.kd = np.array([[10, 0, 0],
-                            [0, 10, 0],
-                            [0, 0, 14]]) #10 10 14
+        # self.kp = np.array([[5, 0, 0],
+        #                     [0, 5, 0],
+        #                     [0, 0, 4.5]]) #5 5 4.5
+        self.kp = np.array([[1.5, 0, 0],
+                            [0, 1.5, 0],
+                            [0, 0, 1.5]]) #5 5 4.5
+        self.kd = np.array([[2.5, 0, 0],
+                            [0, 2.5, 0],
+                            [0, 0, 2.5]]) #10 10 14
         self.kr = np.array([[1000, 0, 0],
                             [0, 1000, 0],
                             [0, 0, 1000]]) #1000 1000 1000
@@ -89,11 +92,12 @@ class quad_rotor:
                         [R31, R32, R33]])
 
         self.Rbw = Rwb.reshape(3,3)
-        # print(self.Rbw)
 
-        gravity_comp = (np.dot((1/self.m), np.array([0, 0, -self.m * 9.8]))).reshape((3,1))
+        gravity_comp = (1/self.m) * np.array([0, 0, -self.m * 9.8]).reshape((3,1))
         thrust_comp = (1/self.m) * np.dot(self.Rbw, np.array([0, 0, self.u1])).reshape((3,1))
+        # print("thrust", thrust_comp)
         accel = gravity_comp + thrust_comp
+        # print("dyn_accel", accel)
 
         inv_moment_inertia = np.linalg.inv(self.moment_inertia)
         ang_vel_input = np.array([y0[9], y0[10], y0[11]]).reshape(3,1)
@@ -112,6 +116,7 @@ class quad_rotor:
 
 
         vel = np.array([y0[3],  y0[4], y0[5]]).reshape(3,1)
+        # print(vel)
 
         state_dot = np.concatenate((vel, accel.reshape(1,3), ang_vel.reshape(1,3), ang_accel.reshape(1,3)), axis=None)
         state_dot = state_dot.astype(float).reshape(-1)
@@ -124,11 +129,16 @@ class quad_rotor:
         pos = np.array([self.state[0], self.state[1], self.state[2]]).reshape(3,1)
         vel = np.array([self.state[3], self.state[4], self.state[5]]).reshape(3,1)
 
+        # print("pos", pos)
         error_pos = pos - des_pos.reshape(3,1)
+        print("error_pos", error_pos)
+        print("vel",vel)
         error_vel = vel - des_vel.reshape(3,1)
+        print(error_vel)
 
-        # a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
-        a_cmd = des_accel - self.PD_pv(error_vel, self.pre_error_v, error_pos, 0.1)
+        a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
+        # a_cmd = des_accel - self.PD_pv(error_vel, self.pre_error_v, error_pos, 0.01)
+        print("a_cmd",a_cmd)
 
         u1 = self.m*(a_cmd[2] + 9.8)
 
@@ -145,7 +155,7 @@ class quad_rotor:
         error_omega = omega - omega_des
 
         # u2 = np.dot(np.identity(3), (-np.dot(self.kr, error_R)-np.dot(self.k_omega, error_omega)))
-        u2 = np.dot(np.identity(3), -self.PD_rw(error_omega, self.pre_error_w, error_R, 0.1))
+        u2 = np.dot(np.identity(3), -self.PD_rw(error_omega, self.pre_error_w, error_R, 0.01))
         return [u1, u2]
 
     def PD_pv(self, error_v, pre_error_v, error_p,  dt):
@@ -180,24 +190,32 @@ class quad_rotor:
 
         #take off
         #discretize the distance
-        take_off_time = np.linspace(1, 10, 10)
+        take_off_time = np.linspace(1, 10, 2)
         delta_pos = zt / len(take_off_time)
+        des_pos = self.state[0:3] + np.array([0, 0, delta_pos]).reshape(3,1)
+        print("des_pos", des_pos)
         for i in range(len(take_off_time)):
-            self.state[0:3] = self.state[0:3] + np.array([0, 0, delta_pos]).reshape(3,1)
+            x_des = des_pos[0]
+            y_des = des_pos[1]
+            z_des = des_pos[2]
 
-            x_des = self.state[0]
-            y_des = self.state[1]
-            z_des = self.state[2]
-
-            [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
-            t = np.linspace(0, 5, 2)
+            [self.u1, self.u2] = self.controller(des_pos, np.zeros((3,1)), np.zeros((3, 1)), 0, 0)
+            t = np.linspace(0, 1, 2)
             sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            # print(sol)
+            self.state = sol[1].reshape(12,1)
+            # print(self.state)
             pos = sol[1][0:3]
+            print("pos", pos)
+
+            des_pos = des_pos + np.array([0, 0, delta_pos]).reshape(3,1)
+            print("des_pos", des_pos)
+
             x_real = np.append(x_real, pos[0])
             y_real = np.append(y_real, pos[1])
             z_real = np.append(z_real, pos[2])
             self.visualization(pos)
+
+        print("FINISHED TAKEOFF BEGINNING HOVER")
 
         #hover
         des_pos = self.state[0:3]
@@ -205,13 +223,13 @@ class quad_rotor:
         des_accel = np.zeros((3,1))
         des_yaw = 0
         des_yaw_rate = 0
-        [self.u1, self.u2] = self.controller(self.state[0:3], self.state[4:7], des_accel, 0,  0)
+        [self.u1, self.u2] = self.controller(self.state[0:3],des_vel, des_accel, 0,  0)
         # print(self.u1, )
         t = np.linspace(0, T, 10)
         sol = odeint(self.dynamics, self.state.reshape(-1), t)
         # print('sol',sol)
         pos = sol[1][0:3]
-        # print('pos',pos)
+        print('Hover pos',pos)
 
         x_des = des_pos[0]
         y_des = des_pos[1]
@@ -222,21 +240,30 @@ class quad_rotor:
         z_real = np.append(z_real, pos[2])
         self.visualization(pos.reshape(1,3))
 
+        print("FINISHED HOVER BEGINNING LAND")
+
         #land
-        take_off_time = np.linspace(1, 10, 10)
+        take_off_time = np.linspace(1, 10, 2)
         delta_pos = zt / len(take_off_time)
+        des_pos = self.state[0:3]
+        print("start_pos", des_pos)
         for i in range(len(take_off_time)):
-            self.state[0:3] = self.state[0:3] - np.array([0, 0, delta_pos]).reshape(3,1)
 
-            x_des = self.state[0]
-            y_des = self.state[1]
-            z_des = self.state[2]
+            x_des = des_pos[0]
+            y_des = des_pos[1]
+            z_des = des_pos[2]
 
-            [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
-            t = np.linspace(0, 5, 2)
+            [self.u1, self.u2] = self.controller(des_pos, np.zeros((3,1)), np.zeros((3, 1)), 0, 0)
+            t = np.linspace(0, 1, 2)
             sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            # print(sol)
+            self.state = sol[1].reshape(12,1)
+            # print(self.state)
             pos = sol[1][0:3]
+            print("pos", pos)
+
+            des_pos = des_pos - np.array([0, 0, delta_pos]).reshape(3,1)
+            print("des_pos", des_pos)
+
             x_real = np.append(x_real, pos[0])
             y_real = np.append(y_real, pos[1])
             z_real = np.append(z_real, pos[2])
@@ -257,7 +284,7 @@ class quad_rotor:
 def main():
     q0 = np.array([0.5, 0.5, 0.5, 0, 0, 0]).reshape(6,1)
     qh = np.array([1, 1, 1, 0, 0, 0]).reshape(6,1)
-    zt = 0.5
+    zt = 0.2
     T = 4
 
     q = quad_rotor()
