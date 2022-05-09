@@ -24,10 +24,13 @@ class quad_rotor:
                             [0, 1000, 0],
                             [0, 0, 1000]]) #1000 1000 1000
         self.k_omega = np.array([[100, 0, 0],
-                            [0, 100, 0],
-                            [0, 0, 100]]) #100 100 100
+                                [0, 100, 0],
+                                [0, 0, 100]]) #100 100 100
         self.u1 = 0
         self.u2 = np.zeros((3,1))
+
+        self.pre_error_v = np.zeros((3,1))
+        self.pre_error_w = np.zeros((3,1))
 
     def visualization(self, pos):
         #the inputs to the function is the length of the arm of the quad_rotor and the rotation matrix, and the position in the world frame
@@ -86,7 +89,7 @@ class quad_rotor:
                         [R31, R32, R33]])
 
         self.Rbw = Rwb.reshape(3,3)
-        print(self.Rbw)
+        # print(self.Rbw)
 
         gravity_comp = (np.dot((1/self.m), np.array([0, 0, -self.m * 9.8]))).reshape((3,1))
         thrust_comp = (1/self.m) * np.dot(self.Rbw, np.array([0, 0, self.u1])).reshape((3,1))
@@ -124,8 +127,8 @@ class quad_rotor:
         error_pos = pos - des_pos.reshape(3,1)
         error_vel = vel - des_vel.reshape(3,1)
 
-        a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
-        print(a_cmd)
+        # a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
+        a_cmd = des_accel - self.PD_pv(error_vel, self.pre_error_v, error_pos, 0.1)
 
         u1 = self.m*(a_cmd[2] + 9.8)
 
@@ -141,8 +144,23 @@ class quad_rotor:
 
         error_omega = omega - omega_des
 
-        u2 = np.dot(np.identity(3), (-np.dot(self.kr, error_R)-np.dot(self.k_omega, error_omega)))
+        # u2 = np.dot(np.identity(3), (-np.dot(self.kr, error_R)-np.dot(self.k_omega, error_omega)))
+        u2 = np.dot(np.identity(3), -self.PD_rw(error_omega, self.pre_error_w, error_R, 0.1))
         return [u1, u2]
+
+    def PD_pv(self, error_v, pre_error_v, error_p,  dt):
+
+        pout = np.dot(self.kp, error_p)
+        dout = np.dot(self.kd, (error_v - pre_error_v)) / dt
+        self.pre_error_v = error_v
+        return pout + dout
+
+    def PD_rw(self, error_w, pre_error_w, error_r,  dt):
+
+        pout = np.dot(self.k_omega, error_r)
+        dout = np.dot(self.k_omega, (error_w - pre_error_w)) / dt
+        self.pre_error_w = error_w
+        return pout + dout
 
     def trajectory_planner(self, q0, qh, zt, T):
         #begin at start position q0, that gives desired position and orientation
@@ -174,7 +192,7 @@ class quad_rotor:
             [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
             t = np.linspace(0, 5, 2)
             sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            print(sol)
+            # print(sol)
             pos = sol[1][0:3]
             x_real = np.append(x_real, pos[0])
             y_real = np.append(y_real, pos[1])
@@ -188,12 +206,12 @@ class quad_rotor:
         des_yaw = 0
         des_yaw_rate = 0
         [self.u1, self.u2] = self.controller(self.state[0:3], self.state[4:7], des_accel, 0,  0)
-        print(self.u1, )
+        # print(self.u1, )
         t = np.linspace(0, T, 10)
         sol = odeint(self.dynamics, self.state.reshape(-1), t)
-        print('sol',sol)
+        # print('sol',sol)
         pos = sol[1][0:3]
-        print('pos',pos)
+        # print('pos',pos)
 
         x_des = des_pos[0]
         y_des = des_pos[1]
@@ -217,7 +235,7 @@ class quad_rotor:
             [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
             t = np.linspace(0, 5, 2)
             sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            print(sol)
+            # print(sol)
             pos = sol[1][0:3]
             x_real = np.append(x_real, pos[0])
             y_real = np.append(y_real, pos[1])
