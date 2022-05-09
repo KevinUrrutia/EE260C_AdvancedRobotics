@@ -146,6 +146,14 @@ class quad_rotor:
 
     def trajectory_planner(self, q0, qh, zt, T):
         #begin at start position q0, that gives desired position and orientation
+        x_real = self.state[0]
+        y_real = self.state[1]
+        z_real = self.state[2]
+
+        x_des = q0[0]
+        y_des = q0[1]
+        z_des = q0[2]
+
         self.state[0:3] = q0[0:3]
         self.state[6:9] = q0[3:6]
         pos = self.state[0:3]
@@ -158,11 +166,19 @@ class quad_rotor:
         delta_pos = zt / len(take_off_time)
         for i in range(len(take_off_time)):
             self.state[0:3] = self.state[0:3] + np.array([0, 0, delta_pos]).reshape(3,1)
+
+            x_des = self.state[0]
+            y_des = self.state[1]
+            z_des = self.state[2]
+
             [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
             t = np.linspace(0, 5, 2)
             sol = odeint(self.dynamics, self.state.reshape(-1), t)
             print(sol)
             pos = sol[1][0:3]
+            x_real = np.append(x_real, pos[0])
+            y_real = np.append(y_real, pos[1])
+            z_real = np.append(z_real, pos[2])
             self.visualization(pos)
 
         #hover
@@ -173,21 +189,58 @@ class quad_rotor:
         des_yaw_rate = 0
         [self.u1, self.u2] = self.controller(self.state[0:3], self.state[4:7], des_accel, 0,  0)
         print(self.u1, )
-        t = np.linspace(0, 5, 2)
+        t = np.linspace(0, T, 10)
         sol = odeint(self.dynamics, self.state.reshape(-1), t)
         print('sol',sol)
         pos = sol[1][0:3]
         print('pos',pos)
-        pos = pos.reshape(1,3)
+
+        x_des = des_pos[0]
+        y_des = des_pos[1]
+        z_des = des_pos[2]
+
+        x_real = np.append(x_real, pos[0])
+        y_real = np.append(y_real, pos[1])
+        z_real = np.append(z_real, pos[2])
         self.visualization(pos.reshape(1,3))
 
+        #land
+        take_off_time = np.linspace(1, 10, 10)
+        delta_pos = zt / len(take_off_time)
+        for i in range(len(take_off_time)):
+            self.state[0:3] = self.state[0:3] - np.array([0, 0, delta_pos]).reshape(3,1)
+
+            x_des = self.state[0]
+            y_des = self.state[1]
+            z_des = self.state[2]
+
+            [self.u1, self.u2] = self.controller((self.state[0:3]), self.state[4:7], np.zeros((3, 1)), 0, 0)
+            t = np.linspace(0, 5, 2)
+            sol = odeint(self.dynamics, self.state.reshape(-1), t)
+            print(sol)
+            pos = sol[1][0:3]
+            x_real = np.append(x_real, pos[0])
+            y_real = np.append(y_real, pos[1])
+            z_real = np.append(z_real, pos[2])
+            self.visualization(pos)
+
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+        ax1.plot(x_real)
+        ax1.plot(x_des)
+
+        ax2.plot(y_real)
+        ax2.plot(y_des)
+
+        ax3.plot(z_real)
+        ax3.plot(z_des)
+        plt.show()
 
 
 def main():
     q0 = np.array([0.5, 0.5, 0.5, 0, 0, 0]).reshape(6,1)
     qh = np.array([1, 1, 1, 0, 0, 0]).reshape(6,1)
     zt = 0.5
-    T = 1
+    T = 4
 
     q = quad_rotor()
     q.trajectory_planner(q0, qh, zt, T)
