@@ -9,20 +9,20 @@ class quad_rotor:
     def __init__(self):
         self.l = 0.046 #[m], the arm lengths of the quad_rotor
         self.m = 0.030 #[kg], the mass of the quadrotor
-        self.moment_inertia = np.array([[1.43e-5, 0, 0],
-                                        [0, 1.43e-5, 0],
-                                        [0, 0, 2.89e-5]])
+
+        self.moment_inertia = np.zeros([3, 3])
+        self.moment_inertia[0, 0] = 1.43e-05
+        self.moment_inertia[1, 1] = 1.43e-05
+        self.moment_inertia[2, 2] = 2.89e-05
+
         self.state = np.zeros((12, 1))
         self.Rbw = np.identity(3)
-        # self.kp = np.array([[5, 0, 0],
-        #                     [0, 5, 0],
-        #                     [0, 0, 4.5]]) #5 5 4.5
-        self.kp = np.array([[1.5, 0, 0],
-                            [0, 1.5, 0],
-                            [0, 0, 1.5]]) #5 5 4.5
-        self.kd = np.array([[2.5, 0, 0],
-                            [0, 2.5, 0],
-                            [0, 0, 2.5]]) #10 10 14
+        self.kp = np.array([[5, 0, 0],
+                            [0, 5, 0],
+                            [0, 0, 4.5]]) #5 5 4.5
+        self.kd = np.array([[10, 0, 0],
+                            [0, 10, 0],
+                            [0, 0, 14]]) #10 10 14
         self.kr = np.array([[1000, 0, 0],
                             [0, 1000, 0],
                             [0, 0, 1000]]) #1000 1000 1000
@@ -69,93 +69,84 @@ class quad_rotor:
         plt.plot(x_par1.flatten(), y_par1.flatten(), z_par1.flatten(), 'bo', linestyle='--')
         plt.plot(x_par2.flatten(), y_par2.flatten(), z_par2.flatten(), 'bo', linestyle='--')
 
-        plt.show()
+        # plt.show()
 
-    def dynamics(self, y0, t):
+    def dynamics(self, state, time, q0, qh, zt, Th):
         #state space X = [x, y, z, dot_x, dot_y, dot_z, phi, theta, psi, angx, angy, angz].T
                         #[0, 1, 2, 3    , 4    , 5    , 6  , 7    , 8  , 9   , 10  , 11]
 
-        R11 = (np.cos(self.state[8])*np.cos(self.state[7])) - (np.sin(self.state[6]*np.sin(self.state[8])*np.sin(self.state[7]))) #c(psi)c(theta) - s(phi)s(psi)s(theta)
-        R12 = -np.cos(self.state[6])*np.sin(self.state[8])                                                         #-c(phi)s(psi)
-        R13 = (np.cos(self.state[8])*np.sin(self.state[7])) + (np.cos(self.state[7])*np.sin(self.state[6])*np.sin(self.state[8])) #c(psi)s(theta) - c(theta)s(phi)s(psi)
+        #Get the desired state
+        takeoff = np.zeros([12])
+        takeoff[11] = time
+        takeoff[2] = 0
+        takeoff[1] = 0
+        takeoff[0] = 10
 
-        R21 = (np.cos(self.state[7])*np.sin(self.state[8])) + (np.cos(self.state[8])*np.sin(self.state[6])*np.sin(self.state[7])) #c(theta)s(psi) + c(psi)s(phi)s(theta)
-        R22 = np.cos(self.state[6])*np.cos(self.state[8])                                                          #c(phi)c(psi)
-        R23 = (np.sin(self.state[8])*np.sin(self.state[7])) - (np.cos(self.state[8])*np.cos(self.state[7])*np.sin(self.state[6])) #s(psi)s(theta) - c(psi)c(theta)s(phi)
+        [self.u1, self.u2] = self.controller(state, takeoff[0:3], takeoff[3:6], takeoff[6:9], takeoff[9], takeoff[10], time)
 
-        R31 = -np.cos(self.state[6])*np.sin(self.state[7])                                                         #-c(phi)s(theta)
-        R32 = np.sin(self.state[6])                                                                           #s(phi)
-        R33 = np.cos(self.state[6])*np.cos(self.state[7])                                                          #c(phi)c(theta)
+        velocity = state[3:6].reshape(3,1)
+        ang_vel = state[9:12].reshape(3,1)
 
-        Rwb = np.array([[R11, R12, R13],
+        R11 = (np.cos(state[8])*np.cos(state[7])) - (np.sin(state[6]*np.sin(state[8])*np.sin(state[7]))) #c(psi)c(theta) - s(phi)s(psi)s(theta)
+        R12 = -np.cos(state[6])*np.sin(state[8])                                                         #-c(phi)s(psi)
+        R13 = (np.cos(state[8])*np.sin(state[7])) + (np.cos(state[7])*np.sin(state[6])*np.sin(state[8])) #c(psi)s(theta) - c(theta)s(phi)s(psi)
+
+        R21 = (np.cos(state[7])*np.sin(state[8])) + (np.cos(state[8])*np.sin(state[6])*np.sin(state[7])) #c(theta)s(psi) + c(psi)s(phi)s(theta)
+        R22 = np.cos(state[6])*np.cos(state[8])                                                          #c(phi)c(psi)
+        R23 = (np.sin(state[8])*np.sin(state[7])) - (np.cos(state[8])*np.cos(state[7])*np.sin(state[6])) #s(psi)s(theta) - c(psi)c(theta)s(phi)
+
+        R31 = -np.cos(state[6])*np.sin(state[7])                                                         #-c(phi)s(theta)
+        R32 = np.sin(state[6])                                                                           #s(phi)
+        R33 = np.cos(state[6])*np.cos(state[7])                                                          #c(phi)c(theta)
+
+        R = np.array([[R11, R12, R13],
                         [R21, R22, R23],
                         [R31, R32, R33]])
 
-        self.Rbw = Rwb.reshape(3,3)
+        accel = ((1 / self.m) * (np.array([0, 0, -self.m * 9.8]).reshape(3,1) + np.dot(R, np.array([0, 0, self.u1])).reshape(3,1))).astype(float)
+        ang_accel = np.dot(np.linalg.inv(self.moment_inertia) , self.u2 - np.cross(ang_vel.reshape(1,3), np.dot(self.moment_inertia, ang_vel).reshape(1,3)).reshape(3,1)).astype(float)
 
-        gravity_comp = (1/self.m) * np.array([0, 0, -self.m * 9.8]).reshape((3,1))
-        thrust_comp = (1/self.m) * np.dot(self.Rbw, np.array([0, 0, self.u1])).reshape((3,1))
-        # print("thrust", thrust_comp)
-        accel = gravity_comp + thrust_comp
-        # print("dyn_accel", accel)
+        ang_vel_matrix = np.array([[np.cos(state[7]), 0, -np.cos(state[6]) * np.sin(state[7])],
+                                         [0, 1, np.sin(state[6])],
+                                         [np.sin(state[7]), 0, np.cos(state[6]) * np.cos(state[7])]])
 
-        inv_moment_inertia = np.linalg.inv(self.moment_inertia)
-        ang_vel_input = np.array([y0[9], y0[10], y0[11]]).reshape(3,1)
-        moment_comp = np.dot(self.moment_inertia, ang_vel_input)
+        euler_ang_vel = np.dot(np.linalg.inv(ang_vel_matrix), ang_vel)
 
+        print(velocity)
 
-        moment_cross = np.cross(ang_vel_input, moment_comp, axis=0)
-
-        ang_accel = np.dot(inv_moment_inertia,(self.u2.reshape(3,1) - moment_cross))
-
-        ang_vel_matrix = np.array([[np.cos(y0[7]), 0, -np.cos(y0[6])*np.sin(y0[7])],
-                                    [0              ,1, np.sin(y0[6])],
-                                    [np.sin(y0[7]),0, np.cos(y0[6])*np.cos(y0[7])]], dtype='float')
-
-        ang_vel = np.dot(np.linalg.inv(ang_vel_matrix), np.array([y0[9], y0[10], y0[11]]))
-
-
-        vel = np.array([y0[3],  y0[4], y0[5]]).reshape(3,1)
-        # print(vel)
-
-        state_dot = np.concatenate((vel, accel.reshape(1,3), ang_vel.reshape(1,3), ang_accel.reshape(1,3)), axis=None)
-        state_dot = state_dot.astype(float).reshape(-1)
-        # print('y0 : ',y0)
-        pos = y0[0:3]
-        # self.visualization(pos.reshape(1,3))
+        state_dot = np.concatenate((velocity,
+                                      accel,
+                                      euler_ang_vel,
+                                      ang_accel), axis=None)
         return state_dot
 
-    def controller(self, des_pos, des_vel, des_accel, des_yaw, des_yaw_rate):
-        pos = np.array([self.state[0], self.state[1], self.state[2]]).reshape(3,1)
-        vel = np.array([self.state[3], self.state[4], self.state[5]]).reshape(3,1)
+    def controller(self, state, des_pos, des_vel, des_accel, des_yaw, des_yaw_rate, t_des):
 
-        # print("pos", pos)
+        pos = np.array([state[0], state[1], state[2]]).reshape(3,1)
+        vel = np.array([state[3], state[4], state[5]]).reshape(3,1)
+
+
         error_pos = pos - des_pos.reshape(3,1)
-        print("error_pos", error_pos)
-        print("vel",vel)
-        error_vel = vel - des_vel.reshape(3,1)
-        print(error_vel)
 
-        a_cmd = des_accel.reshape(3,1) - np.dot(self.kd, error_vel) - np.dot(self.kp, error_pos)
-        # a_cmd = des_accel - self.PD_pv(error_vel, self.pre_error_v, error_pos, 0.01)
-        print("a_cmd",a_cmd)
+        error_vel = vel - des_vel.reshape(3,1)
+
+        a_cmd = des_accel.reshape(3,1) - self.PD_pv(error_vel, self.pre_error_v, error_pos, t_des)
 
         u1 = self.m*(a_cmd[2] + 9.8)
 
-        eta = np.array([self.state[6], self.state[7], self.state[8]]).reshape(3,1)
+        eta = np.array([state[6], state[7], state[8]]).reshape(3,1)
 
         phi_des = -((a_cmd[1]*np.cos(des_yaw)) - (a_cmd[0]*np.sin(des_yaw)))/(9.8*(np.cos(des_yaw)**2 + np.sin(des_yaw)**2))
         theta_des = a_cmd[0] - (((a_cmd[1]*np.cos(des_yaw)) + (a_cmd[0]*np.sin(des_yaw)))/(9.8*np.cos(des_yaw)))
         eta_des = np.array([phi_des, theta_des, des_yaw]).reshape(3,1)
         error_R = eta - eta_des
 
-        omega = np.array([self.state[9], self.state[10], self.state[11]]).reshape(3,1)
+        omega = np.array([state[9], state[10], state[11]]).reshape(3,1)
         omega_des = np.array([0, 0, des_yaw_rate]).reshape(3,1)
 
         error_omega = omega - omega_des
 
-        # u2 = np.dot(np.identity(3), (-np.dot(self.kr, error_R)-np.dot(self.k_omega, error_omega)))
-        u2 = np.dot(np.identity(3), -self.PD_rw(error_omega, self.pre_error_w, error_R, 0.01))
+        u2 = np.dot(np.identity(3), -self.PD_rw(error_omega, self.pre_error_w, error_R, t_des))
         return [u1, u2]
 
     def PD_pv(self, error_v, pre_error_v, error_p,  dt):
@@ -173,119 +164,62 @@ class quad_rotor:
         return pout + dout
 
     def trajectory_planner(self, q0, qh, zt, T):
-        #begin at start position q0, that gives desired position and orientation
-        x_real = self.state[0]
-        y_real = self.state[1]
-        z_real = self.state[2]
+        t = np.linspace(0.01, 5, 100)
+        state = np.array([q0[0], q0[1], q0[2], 0, 0, 0, q0[3], q0[4], q0[5], 0, 0, 0])
+        sol = odeint(self.dynamics, state, t, args=(q0, qh, zt, T))
 
-        x_des = q0[0]
-        y_des = q0[1]
-        z_des = q0[2]
+        fig, ax = plt.subplots()
+        ax.set_title("Positioning")
+        ax.set_xlabel("t")
+        ax.set_ylabel("m")
+        ax.plot(t, sol[:,0], label='x')
+        ax.plot(t, sol[:,1], label='y')
+        ax.plot(t, sol[:,2], label='z')
+        ax.grid()
+        leg = ax.legend()
 
-        self.state[0:3] = q0[0:3]
-        self.state[6:9] = q0[3:6]
-        pos = self.state[0:3]
-        pos = pos.reshape(1,3)
-        self.visualization(pos.reshape(1,3))
+        fig, ax = plt.subplots()
+        ax.set_title("Linear Velocities")
+        ax.set_xlabel("t")
+        ax.set_ylabel("m")
+        ax.plot(t, sol[:,3], label='x_dot')
+        ax.plot(t, sol[:,4], label='y_dot')
+        ax.plot(t, sol[:,5], label='z_dot')
+        ax.grid()
+        leg = ax.legend()
 
-        #take off
-        #discretize the distance
-        take_off_time = np.linspace(1, 10, 2)
-        delta_pos = zt / len(take_off_time)
-        des_pos = self.state[0:3] + np.array([0, 0, delta_pos]).reshape(3,1)
-        print("des_pos", des_pos)
-        for i in range(len(take_off_time)):
-            x_des = des_pos[0]
-            y_des = des_pos[1]
-            z_des = des_pos[2]
+        fig, ax = plt.subplots()
+        ax.set_title("Orientation")
+        ax.set_xlabel("t")
+        ax.set_ylabel("m")
+        ax.plot(t, sol[:,6], label='phi')
+        ax.plot(t, sol[:,7], label='theta')
+        ax.plot(t, sol[:,8], label='psi')
+        ax.grid()
+        leg = ax.legend()
 
-            [self.u1, self.u2] = self.controller(des_pos, np.zeros((3,1)), np.zeros((3, 1)), 0, 0)
-            t = np.linspace(0, 1, 2)
-            sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            self.state = sol[1].reshape(12,1)
-            # print(self.state)
-            pos = sol[1][0:3]
-            print("pos", pos)
+        fig, ax = plt.subplots()
+        ax.set_title("Angular Velocities")
+        ax.set_xlabel("t")
+        ax.set_ylabel("m")
+        ax.plot(t, sol[:,9], label='phi_dot')
+        ax.plot(t, sol[:,10], label='theta_dot')
+        ax.plot(t, sol[:,11], label='psi_dot')
+        ax.grid()
+        leg = ax.legend()
 
-            des_pos = des_pos + np.array([0, 0, delta_pos]).reshape(3,1)
-            print("des_pos", des_pos)
-
-            x_real = np.append(x_real, pos[0])
-            y_real = np.append(y_real, pos[1])
-            z_real = np.append(z_real, pos[2])
-            self.visualization(pos)
-
-        print("FINISHED TAKEOFF BEGINNING HOVER")
-
-        #hover
-        des_pos = self.state[0:3]
-        des_vel = np.zeros((3,1))
-        des_accel = np.zeros((3,1))
-        des_yaw = 0
-        des_yaw_rate = 0
-        [self.u1, self.u2] = self.controller(self.state[0:3],des_vel, des_accel, 0,  0)
-        # print(self.u1, )
-        t = np.linspace(0, T, 10)
-        sol = odeint(self.dynamics, self.state.reshape(-1), t)
-        # print('sol',sol)
-        pos = sol[1][0:3]
-        print('Hover pos',pos)
-
-        x_des = des_pos[0]
-        y_des = des_pos[1]
-        z_des = des_pos[2]
-
-        x_real = np.append(x_real, pos[0])
-        y_real = np.append(y_real, pos[1])
-        z_real = np.append(z_real, pos[2])
-        self.visualization(pos.reshape(1,3))
-
-        print("FINISHED HOVER BEGINNING LAND")
-
-        #land
-        take_off_time = np.linspace(1, 10, 2)
-        delta_pos = zt / len(take_off_time)
-        des_pos = self.state[0:3]
-        print("start_pos", des_pos)
-        for i in range(len(take_off_time)):
-
-            x_des = des_pos[0]
-            y_des = des_pos[1]
-            z_des = des_pos[2]
-
-            [self.u1, self.u2] = self.controller(des_pos, np.zeros((3,1)), np.zeros((3, 1)), 0, 0)
-            t = np.linspace(0, 1, 2)
-            sol = odeint(self.dynamics, self.state.reshape(-1), t)
-            self.state = sol[1].reshape(12,1)
-            # print(self.state)
-            pos = sol[1][0:3]
-            print("pos", pos)
-
-            des_pos = des_pos - np.array([0, 0, delta_pos]).reshape(3,1)
-            print("des_pos", des_pos)
-
-            x_real = np.append(x_real, pos[0])
-            y_real = np.append(y_real, pos[1])
-            z_real = np.append(z_real, pos[2])
-            self.visualization(pos)
-
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
-        ax1.plot(x_real)
-        ax1.plot(x_des)
-
-        ax2.plot(y_real)
-        ax2.plot(y_des)
-
-        ax3.plot(z_real)
-        ax3.plot(z_des)
         plt.show()
+
+        for i in range(sol.shape[0]):
+            self.visualization(sol[i][0:3])
+            plt.show()
 
 
 def main():
-    q0 = np.array([0.5, 0.5, 0.5, 0, 0, 0]).reshape(6,1)
-    qh = np.array([1, 1, 1, 0, 0, 0]).reshape(6,1)
-    zt = 0.2
-    T = 4
+    q0 = np.array([0, 0, 0 , 0, 0, 0])
+    qh = np.array([1, 1, 1, 0, 0, 0])
+    zt = 1
+    T = 0.1
 
     q = quad_rotor()
     q.trajectory_planner(q0, qh, zt, T)
