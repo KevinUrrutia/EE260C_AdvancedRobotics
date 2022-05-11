@@ -51,9 +51,9 @@ class quad_rotor:
         x_par2 = np.array([rotor2[0], rotor4[0]])
         y_par2 = np.array([rotor2[1], rotor4[1]])
         z_par2 = np.array([rotor2[2], rotor4[2]])
-        axs.axes.set_xlim3d(left=-pos[0]-4, right=pos[0]+4)
-        axs.axes.set_ylim3d(bottom=-pos[1]-4, top=pos[1]+4)
-        axs.axes.set_zlim3d(bottom=-pos[2]-4, top=pos[2]+4)
+        axs.axes.set_xlim3d(left=-pos[0]-10, right=pos[0]+10)
+        axs.axes.set_ylim3d(bottom=-pos[1]-10, top=pos[1]+10)
+        axs.axes.set_zlim3d(bottom=-pos[2]-10, top=pos[2]+10)
         plt.cla()
         plt.plot(x_par1.flatten(), y_par1.flatten(), z_par1.flatten(), 'bo', linestyle='--')
         plt.plot(x_par2.flatten(), y_par2.flatten(), z_par2.flatten(), 'bo', linestyle='--')
@@ -81,10 +81,14 @@ class quad_rotor:
         R23 = (np.sin(state[8])*np.sin(state[7])) - (np.cos(state[8])*np.cos(state[7])*np.sin(state[6])) #s(psi)s(theta) - c(psi)c(theta)s(phi)
         R31 = -np.cos(state[6])*np.sin(state[7])                                                         #-c(phi)s(theta)
         R32 = np.sin(state[6])                                                                           #s(phi)
-        R33 = np.cos(state[6])*np.cos(state[7])                                                          #c(phi)c(theta)
+        R33 = np.cos(state[6])*np.cos(state[7])
+                                                                #c(phi)c(theta)
         R = np.array([[R11, R12, R13],
                         [R21, R22, R23],
                         [R31, R32, R33]])
+
+        self.Rbw = R
+
         accel = ((1 / self.m) * (np.array([0, 0, -self.m * 9.8]).reshape(3,1) + np.dot(R, np.array([0, 0, self.u1])).reshape(3,1))).astype(float)
         ang_accel = np.dot(np.linalg.inv(self.moment_inertia) , self.u2 - np.cross(ang_vel.reshape(1,3), np.dot(self.moment_inertia, ang_vel).reshape(1,3)).reshape(3,1)).astype(float)
         ang_vel_matrix = np.array([[np.cos(state[7]), 0, -np.cos(state[6]) * np.sin(state[7])],
@@ -136,59 +140,74 @@ class quad_rotor:
         takeoff = np.array([0, 0, zt, 0, 0, 0])
         sol = odeint(self.dynamics, state, t, args=(q0, takeoff, zt, T))
 
+        total_traj = sol
+
         t = np.linspace(0.01, 5, 10)
         state = sol[9]
         new_pos = state[0:3] + np.array([2, 0, 0]).reshape(3,1)
-        print(new_pos)
         sol = odeint(self.dynamics, state, t, args=(q0, qh, zt, T))
-        print(sol[:,0:3])
+        total_traj = np.concatenate((total_traj, sol), axis=0)
+
+        t = np.linspace(0.01, 5, 10)
+        state = sol[9]
+        sol = odeint(self.dynamics, state, t, args=(q0, qh, zt, T))
+        total_traj = np.concatenate((total_traj, sol), axis=0)
+
+        t = np.linspace(0.01, 5, 10)
+        state = sol[9]
+        new_pos = np.array([1, 0, 0]).reshape(3,1)
+        sol = odeint(self.dynamics, state, t, args=(q0, new_pos, zt, T))
+        total_traj = np.concatenate((total_traj, sol), axis=0)
+
+        total_t = np.linspace(0.01, 5, 40)
+
         fig, ax = plt.subplots()
         ax.set_title("Positioning")
         ax.set_xlabel("t")
         ax.set_ylabel("m")
-        ax.plot(t, sol[:,0], label='x')
-        ax.plot(t, sol[:,1], label='y')
-        ax.plot(t, sol[:,2], label='z')
+        ax.plot(total_t, total_traj[:,0], label='x')
+        ax.plot(total_t, total_traj[:,1], label='y')
+        ax.plot(total_t, total_traj[:,2], label='z')
         ax.grid()
         leg = ax.legend()
         fig, ax = plt.subplots()
         ax.set_title("Linear Velocities")
         ax.set_xlabel("t")
         ax.set_ylabel("m")
-        ax.plot(t, sol[:,3], label='x_dot')
-        ax.plot(t, sol[:,4], label='y_dot')
-        ax.plot(t, sol[:,5], label='z_dot')
+        ax.plot(total_t, total_traj[:,3], label='x_dot')
+        ax.plot(total_t, total_traj[:,4], label='y_dot')
+        ax.plot(total_t, total_traj[:,5], label='z_dot')
         ax.grid()
         leg = ax.legend()
         fig, ax = plt.subplots()
         ax.set_title("Orientation")
         ax.set_xlabel("t")
         ax.set_ylabel("m")
-        ax.plot(t, sol[:,6], label='phi')
-        ax.plot(t, sol[:,7], label='theta')
-        ax.plot(t, sol[:,8], label='psi')
+        ax.plot(total_t, total_traj[:,6], label='phi')
+        ax.plot(total_t, total_traj[:,7], label='theta')
+        ax.plot(total_t, total_traj[:,8], label='psi')
         ax.grid()
         leg = ax.legend()
         fig, ax = plt.subplots()
         ax.set_title("Angular Velocities")
         ax.set_xlabel("t")
         ax.set_ylabel("m")
-        ax.plot(t, sol[:,9], label='phi_dot')
-        ax.plot(t, sol[:,10], label='theta_dot')
-        ax.plot(t, sol[:,11], label='psi_dot')
+        ax.plot(total_t, total_traj[:,9], label='phi_dot')
+        ax.plot(total_t, total_traj[:,10], label='theta_dot')
+        ax.plot(total_t, total_traj[:,11], label='psi_dot')
         ax.grid()
         leg = ax.legend()
         # plt.show()
         fig = plt.figure()
         axs = plt.axes(projection='3d')
-        for i in range(sol.shape[0]):
-            self.visualization(sol[i][0:3], fig, axs)
+        for i in range(total_traj.shape[0]):
+            self.visualization(total_traj[i][0:3], fig, axs)
         plt.show()
             # plt.close()
 
 def main():
     q0 = np.array([0, 0, 0 , 0, 0, 0])
-    qh = np.array([1, 1, 1, 0, 0, 0])
+    qh = np.array([1, 0, 1, 0, 0, 0])
     zt = 1
     T = 0.1
     q = quad_rotor()
