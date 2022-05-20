@@ -17,7 +17,12 @@ class trajectory_planner:
         self.plot_obstacles(fig, ax)
         self.obs_list = self.generate_obstacles()
         self.path = [(1, 5, 2), (1, 5, 3), (1, 4, 3), (0, 4, 2), (0, 3, 1), (1, 2, 0), (2, 1, -1), (3, 0, -1), (4, 1, -2), (5, 0, -1), (6, 0, 0), (7, 0, 0), (8, 1, -1), (9, 2, -1), (10, 1, 0), (11, 1, 1), (12, 1, 2), (13, 1, 3), (14, 2, 3), (15, 3, 3), (16, 4, 3), (17, 5, 3)]
-        print(self.waypoint_reduct())
+        self.reduced_path = self.waypoint_reduct()
+
+        self.prev_vel = np.array([0, 0, 0])
+        self.prev_wpt = self.start
+        self.run()
+
         ajdghfj
         self.path = self.get_path_from_A_star(self.start, self.goal, self.obs_list)
         print(self.path)
@@ -265,12 +270,12 @@ class trajectory_planner:
                         continue
                     else:
                         current_waypoint = self.path[i-1]
-                        print("FOUND NEW WAYPOINT")
-                        print(current_waypoint)
+                        # print("FOUND NEW WAYPOINT")
+                        # print(current_waypoint)
                         break_q = True
                         break
                 if (break_q):
-                    print("BROKE SECOND FOR")
+                    # print("BROKE SECOND FOR")
                     break_q = False
                     break
                 else:
@@ -280,16 +285,97 @@ class trajectory_planner:
             if idx > length - 2:
                 current_waypoint = self.goal
                 waypoints.append(current_waypoint)
-                print("CURRENT INDEX AT END")
+                # print("CURRENT INDEX AT END")
                 break
             new_idx = self.path.index(current_waypoint)
             # idx = new_idx + new_cnt
-            print(new_idx)
+            # print(new_idx)
             self.path = self.path[idx:len(self.path)]
-            print("NEW REDUCED PATH", self.path)
+            # print("NEW REDUCED PATH", self.path)
             waypoints.append(current_waypoint)
 
         return waypoints
+
+    def polynomial_time_scaling_5th_order(self, p_start, v_start, p_end, v_end, T):
+        x_array = np.array([p_start, p_end, v_start, v_end, 0, 0]).T
+        # print(x_array)
+
+        # T_mat = np.array([(0, 0, 0, 0, 0, 1),
+        #         (pow(T, 5), pow(T, 4), pow(T, 3), pow(T, 2), T, 1),
+        #         (0, 0, 0, 0, 1, 0),
+        #         (5*pow(T, 4), 4*pow(T, 3), 3*pow(T, 2), 2*T, 1), (0, 0, 0, 2, 0, 0),
+        #         (20*pow(T, 3), 12*pow(T, 2), 6*T, 2, 0, 0)], dtype=object)
+        T_mat = np.array([[0,0,0,0,0,1], [pow(T,5),pow(T,4),pow(T,3), pow(T,2),T,1], [0,0,0,0,1,0],
+                        [5*pow(T,4), 4*pow(T,3), 3*pow(T,2), 2*T, 1, 0],
+                        [0,0,0,2,0,0], [20*pow(T,3), 12*pow(T,2), 6*T, 2, 0, 0]])
+        # print(T_mat)
+
+        T_mat_inv = np.linalg.inv(T_mat)
+        coeff = np.dot(T_mat_inv, x_array)
+
+        return coeff
+
+    def run(self):
+        for i in range(len(self.reduced_path)-1):
+            self.move_to_point(self.reduced_path[i], self.reduced_path[i+1], i)
+
+
+    def move_to_point(self, current_wpt, next_wpt, count):
+        T = 4
+
+        final_velx = (current_wpt[0] - self.prev_wpt[0]) / T
+        final_vely = (current_wpt[1] - self.prev_wpt[1]) / T
+        final_velz = (current_wpt[2] - self.prev_wpt[2]) / T
+
+        cx = self.polynomial_time_scaling_5th_order(self.prev_wpt[0], self.prev_vel[0], current_wpt[0], final_velx, T)
+        cy = self.polynomial_time_scaling_5th_order(self.prev_wpt[1], self.prev_vel[1], current_wpt[1], final_vely, T)
+        cz = self.polynomial_time_scaling_5th_order(self.prev_wpt[2], self.prev_vel[2], current_wpt[2], final_velz, T)
+
+        calc_vx = 0
+        calc_vy = 0
+        calc_vz = 0
+
+        calc_ax = 0
+        calc_ay = 0
+        calc_az = 0
+
+        for i in range(T * 10):
+            calc_vx = cx[1]  + 2*cx[2]*(i/10) + 3*cx[3]*(i/10)**2 + 4*cx[4]*(i/10)**3 + 5*cx[5]*(i/10)**4
+            calc_vy = cx[1]  + 2*cy[2]*(i/10) + 3*cy[3]*(i/10)**2 + 4*cy[4]*(i/10)**3 + 5*cy[5]*(i/10)**4
+            calc_vz = cx[1]  + 2*cz[2]*(i/10) + 3*cz[3]*(i/10)**2 + 4*cz[4]*(i/10)**3 + 5*cz[5]*(i/10)**4
+
+            calc_ax = 2*cx[2] + 6*cx[3]*(i/10) + 12*cx[4]*(i/10)**2 + 20*cx[5]*(i/10)**3
+            calc_ay = 2*cy[2] + 6*cy[3]*(i/10) + 12*cy[4]*(i/10)**2 + 20*cy[5]*(i/10)**3
+            calc_az = 2*cz[2] + 6*cz[3]*(i/10) + 12*cz[4]*(i/10)**2 + 20*cz[5]*(i/10)**3
+
+        self.prev_vel = [calc_vx, calc_vy, calc_vz]
+        self.prev_wpt = current_wpt
+
+        print(self.prev_wpt)
+        print(self.prev_vel)
+
+
+
+
+
+    # def calc_point(self, t):
+    #     xt = self.a0 + self.a1 * t + self.a2 * t2 + \
+    #         self.a3 * t3 + self.a4 * t4 + self.a5 * t5
+    #     return xt
+    #
+    # def calc_first_derivative(self, t):
+    #     xt = self.a1 + 2 * self.a2 * t + \
+    #         3 * self.a3 * t2 + 4 * self.a4 * t3 + 5 * self.a5 * t4
+    #     return xt
+    #
+    # def calc_second_derivative(self, t):
+    #     xt = 2 * self.a2 + 6 * self.a3 * t + 12 * self.a4 * t2 + 20 * self.a5 * t3
+    #     return xt
+    #
+    # #jerk
+    # def calc_third_derivative(self, t):
+    #     xt = 6 * self.a3 + 24 * self.a4 * t + 60 * self.a5 * t2
+    #     return xt
 
 
 if __name__ == "__main__":
