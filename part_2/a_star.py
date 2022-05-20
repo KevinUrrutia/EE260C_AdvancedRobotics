@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt
 
+from quad_rotor import *
+
 class trajectory_planner:
     # obstacles ([x, y, z], [x, y, z])
     def __init__(self, start, goal, f):
@@ -18,10 +20,16 @@ class trajectory_planner:
         self.obs_list = self.generate_obstacles()
         self.path = [(1, 5, 2), (1, 5, 3), (1, 4, 3), (0, 4, 2), (0, 3, 1), (1, 2, 0), (2, 1, -1), (3, 0, -1), (4, 1, -2), (5, 0, -1), (6, 0, 0), (7, 0, 0), (8, 1, -1), (9, 2, -1), (10, 1, 0), (11, 1, 1), (12, 1, 2), (13, 1, 3), (14, 2, 3), (15, 3, 3), (16, 4, 3), (17, 5, 3)]
         self.reduced_path = self.waypoint_reduct()
+        print(self.reduced_path)
+        self.path = self.reduced_path
+        self.draw_path(fig, ax)
 
         self.prev_vel = np.array([0, 0, 0])
         self.prev_wpt = self.start
         self.run()
+
+        plt.show()
+        self.quad = quad_rotor()
 
         ajdghfj
         self.path = self.get_path_from_A_star(self.start, self.goal, self.obs_list)
@@ -262,7 +270,7 @@ class trajectory_planner:
             #     break
             # print(current_index)
             for i in range(len(self.path)):
-                wayline = np.linspace(current_waypoint, self.path[i], 10)
+                wayline = np.linspace(current_waypoint, self.path[i], 50)
                 for j in range(len(wayline)):
                     pt = wayline[j]
                     # print(wayline[j][0])
@@ -281,17 +289,17 @@ class trajectory_planner:
                 else:
                     new_cnt = new_cnt + 1
 
-            idx = new_idx + new_cnt
-            if idx > length - 2:
+            if idx > length - 1:
                 current_waypoint = self.goal
                 waypoints.append(current_waypoint)
                 # print("CURRENT INDEX AT END")
                 break
+            # waypoints.append(current_waypoint)
             new_idx = self.path.index(current_waypoint)
-            # idx = new_idx + new_cnt
+            idx = new_idx + new_cnt
             # print(new_idx)
-            self.path = self.path[idx:len(self.path)]
-            # print("NEW REDUCED PATH", self.path)
+            self.path = self.path[new_idx:len(self.path)]
+            print("NEW REDUCED PATH", self.path)
             waypoints.append(current_waypoint)
 
         return waypoints
@@ -347,6 +355,8 @@ class trajectory_planner:
             calc_ax = 2*cx[2] + 6*cx[3]*(i/10) + 12*cx[4]*(i/10)**2 + 20*cx[5]*(i/10)**3
             calc_ay = 2*cy[2] + 6*cy[3]*(i/10) + 12*cy[4]*(i/10)**2 + 20*cy[5]*(i/10)**3
             calc_az = 2*cz[2] + 6*cz[3]*(i/10) + 12*cz[4]*(i/10)**2 + 20*cz[5]*(i/10)**3
+
+        #use controller
 
         self.prev_vel = [calc_vx, calc_vy, calc_vz]
         self.prev_wpt = current_wpt
